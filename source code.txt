@@ -1,0 +1,420 @@
+menu_choice=""
+current_cd=""
+title_file="title.cdb"
+tracks_file="tracks.cdb"
+temp_file=/tmp/cdb.$$
+trap 'rm -f $temp_file'EXIT
+get_return() {
+echo -e "Press return \c"
+read x
+return 0
+}
+
+get_confirm() {
+echo -e "Are you sure? \c"
+while true
+do
+read x
+case "$x" in
+y | yes | Y | Yes | YES )
+return 0;;
+n | no | N | No | NO )
+echo
+echo "Cancelled"
+return 1;;
+*) echo "Please enter yes or no" ;;
+esac
+done
+}
+set_menu_choice() {
+clear
+echo "Options :-"
+echo ***********
+echo "  a) Add new CD "
+echo " f) Find CD"
+echo " c) Count the CDs and tracks in the catalog"
+if [ "$cdcatnum" != "" ]; then
+echo " l) List tracks on $cdtitle"
+echo " r) Remove $cdtitle"
+echo " u) Update track information for $cdtitle"
+fi
+echo " q) Quit"
+echo
+echo -e "Please enter choice then press return \c"
+read menu_choice
+return
+}
+insert_title() {
+echo $* >> $title_file
+return
+}
+insert_track() {
+echo $* >> $tracks_file
+return
+}
+add_record_tracks() {
+echo "Enter track information for this CD"
+echo "When no more tracks enter q"
+cdtrack=1
+cdttitle=""
+while [ "$cdttitle" != "q" ]
+do
+echo -e "Track $cdtrack, track title? \c"
+read tmp
+cdttitle=${tmp%%,*}
+if [ "$tmp" != "$cdttitle" ]; then
+echo "Sorry, no commas allowed"
+continue
+fi
+if [ -n "$cdttitle" ] ; then
+if [ "$cdttitle" != "q" ]; then
+insert_track $cdcatnum,$cdtrack,$cdttitle
+fi
+else
+cdtrack=$((cdtrack-1))
+fi
+cdtrack=$((cdtrack+1))
+done
+}
+add_records() {
+# Prompt for the initial information
+echo -e "Enter catalog name \c"
+read tmp
+cdcatnum=${tmp%%,*}
+echo -e "Enter title \c"
+read tmp
+cdtitle=${tmp%%,*}
+echo -e "Enter type \c"
+read tmp
+cdtype=${tmp%%,*}
+echo -e "Enter artist/composer \c"
+read tmp
+cdac=${tmp%%,*}
+echo About to add new entry
+echo "$cdcatnum $cdtitle $cdtype $cdac"
+# If confirmed then append it to the titles file
+if get_confirm ; then
+insert_title $cdcatnum,$cdtitle,$cdtype,$cdac
+add_record_tracks
+else
+remove_records
+fi
+return
+}
+find_cd() {
+if [ "$1" = "n" ]; then
+asklist=n
+else
+asklist=y
+fi
+cdcatnum=""
+echo -e "Enter a string to search for in the CD titles \c"
+read searchstr
+if [ "$searchstr" = "" ]; then
+return 0
+fi
+grep "$searchstr" $title_file > $temp_file
+set $(wc -l $temp_file)
+linesfound=$l
+case "$linesfound" in
+0) echo "Sorry, nothing found"
+get_return
+return 0
+;;
+1) ;;
+2) echo "Sorry, not unique."
+echo "Found the following"
+cat $temp_file
+get_return
+return 0
+esac
+IFS=","
+read cdcatnum cdtitle cdtype cdac < $temp_file
+IFS="" 
+if [ -z “$cdcatnum” ]; then
+echo "Sorry, could not extract catalog field from $temp_file"
+get_return
+return 0
+fi
+echo
+echo Catalog number: $cdcatnum
+echo Title: $cdtitle
+echo Type: $cdtype
+echo Artist/Composer: $cdac
+echo
+get_return
+if [ "$asklist" = "y" ]; then
+echo -e “View tracks for this CD? \c”
+read x
+if [ "$x" = "y" ]; then
+echo
+list_tracks
+echo
+fi
+fi
+return 1
+}
+update_cd() {
+if [ -z "$cdcatnum" ]; then
+echo "You must select a CD first"
+find_cd n
+fi
+if [ -n "$cdcatnum" ]; then
+echo "Current tracks are :-"
+list_tracks
+echo
+echo "This will re-enter the tracks for $cdtitle"
+get_confirm && {
+grep -v "^${cdcatnum}," $tracks_file > $temp_file
+mv $temp_file $tracks_file
+echo
+add_record_tracks
+}
+fi
+return
+}
+count_cds() {
+set $(wc -l $title_file)
+num_titles=$l
+set $(wc -l $tracks_file)
+num_tracks=$l
+echo found $num_titles CDs, with a total of $num_tracks tracks
+get_return
+return
+}
+list_tracks() {
+if [ "$cdcatnum" = "" ]; then
+echo no CD selected yet
+return
+else
+grep "^${cdcatnum}," $tracks_file > $temp_file
+num_tracks=$(wc -l $temp_file)
+if [ "$num_tracks" = "0" ]; then
+echo no tracks found for $cdtitle
+else {
+echo
+echo "$cdtitle :-"
+echo
+cut -f 2- -d , $temp_file
+echo
+} | ${PAGER:-more}
+fi
+fi
+get_return
+return
+}
+rm -f $temp_file
+if [ ! -f $title_file ]; then
+touch $title_file
+fi
+if [ ! -f $tracks_file ]; then
+touch $tracks_file
+fi
+# Now the application proper
+clear
+echo
+echo
+echo "Mini CD manager"
+sleep 1
+quit=n
+while [ "$quit" != "y" ];
+do
+set_menu_choice
+case "$menu_choice" in
+a) add_records;;
+r) remove_records;;
+f) find_cd y;;
+u) update_cd;;
+c) count_cds;;
+l) list_tracks;;
+b)
+echo
+more $title_file
+echo
+get_return;;
+q | Q ) quit=y;;
+*) echo "Sorry, choice not recognized";;
+esac
+done
+#Tidy up and leave
+rm -f $temp_file
+echo "Finished"
+exit 0
+a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on ring ring
+ r) Remove ring ring
+ u) Update track information for ring ring
+ q) Quit
+
+Please enter choice then press return a
+Enter catalog name CD234
+Enter title tring tring
+Enter type hiphop
+Enter artist/composer sony
+About to add new entry
+CD234 tring tring hiphop sony
+Are you sure? y
+Enter track information for this CD
+When no more tracks enter q
+Track 1, track title? y
+Track 2, track title? y
+Track 3, track title? sad
+Track 4, track title? q
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return f
+Enter a string to search for in the CD titles CD234
+
+Catalog number: CD234
+Title: tring tring
+Type: hiphop
+Artist/Composer: sony
+Press return ^C
+[17121a1228@linuxserver ~]$ sh hari.sh
+
+
+Mini CD manager
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ q) Quit
+
+Please enter choice then press return f
+Enter a string to search for in the CD titles CD234
+
+Catalog number: CD234
+Title: tring tring
+Type: hiphop
+Artist/Composer: sony
+
+Press return n
+.View tracks for this CD? c.
+y
+
+
+tring tring :-
+
+1,y
+2,y
+3,sad
+
+Press return n
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return c
+found CDs, with a total of tracks
+Press return n
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return l
+
+tring tring :-
+
+1,y
+2,y
+3,sad
+
+Press return n
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return u
+Current tracks are :-
+
+tring tring :-
+
+1,y
+2,y
+3,sad
+
+Press return n
+
+This will re-enter the tracks for tring tring
+Are you sure? y
+
+Enter track information for this CD
+When no more tracks enter q
+Track 1, track title?
+Track 1, track title? abc
+Track 2, track title? def
+Track 3, track title? sdf
+Track 4, track title? q
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return l
+
+tring tring :-
+
+1,abc
+2,def
+3,sdf
+
+Press return n
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return r
+hari.sh: line 225: remove_records: command not found
+Options :-
+2.c alarm.c a.out cbs1.c cbs2.c cbs3.c cbs4.c ch6s4F1 chapter_4 e1.c exvp1.c f1 f2 f3 f5 f6 file.out hari hari.sh p p1 pi pj project.sh s1.sh s2.sh s3.sh s4.sh s5.sh signal.c student.txt title.cdb track.cdb tracks.cdb uniq.c w1 w2 w3.c week week10a week10ab week10ab.c week10b.c week11a week11a.c week11b week11b.c week12a.c week12b.c week1.c week2.c week3.c week4.c week6a.c week6b.c week7a.c week7b.c week7c.c week7d.c week8a.c week8b1.c week8b2.c week8b3.c week8b4.c week9a.c week9b.c weekf.c weekj.c weekl1a.c weel11a.c weel1a.c wekf.c zz.c
+  a) Add new CD
+ f) Find CD
+ c) Count the CDs and tracks in the catalog
+ l) List tracks on tring tring
+ r) Remove tring tring
+ u) Update track information for tring tring
+ q) Quit
+
+Please enter choice then press return q
+Finished.
+
